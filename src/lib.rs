@@ -26,8 +26,6 @@
 
 #![warn(missing_docs, missing_debug_implementations)]
 
-#[macro_use]
-extern crate failure;
 extern crate globwalk;
 #[cfg(feature = "de")]
 extern crate liquid;
@@ -45,3 +43,4 @@ pub mod de;
 mod template;
 
 mod error;
+pub use error::*;

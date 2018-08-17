@@ -28,7 +28,6 @@ cli = [
 ]
 
 [dependencies]
-failure = "0.1.1"
 globwalk = "0.3"
 log = "0.4"
 

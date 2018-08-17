@@ -30,8 +30,6 @@
 use std::collections::BTreeMap;
 use std::path;
 
-use failure;
-
 use builder;
 use error;
 
@@ -43,7 +41,7 @@ pub trait ActionRender {
     fn format(
         &self,
         engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, failure::Error>;
+    ) -> Result<Box<builder::ActionBuilder>, error::StagingError>;
 }
 
 /// For each stage target, a list of sources to populate it with.
@@ -60,7 +58,7 @@ pub type MapStage = CustomMapStage<Source>;
 pub struct CustomMapStage<R: ActionRender>(BTreeMap<Template, Vec<R>>);
 
 impl<R: ActionRender> CustomMapStage<R> {
-    fn format(&self, engine: &TemplateEngine) -> Result<builder::Stage, failure::Error> {
+    fn format(&self, engine: &TemplateEngine) -> Result<builder::Stage, error::StagingError> {
         let iter = self.0.iter().map(|(target, sources)| {
             let target = abs_to_rel(&target.format(engine)?)?;
             let sources: &Vec<R> = sources;
@@ -88,7 +86,7 @@ impl<R: ActionRender> ActionRender for CustomMapStage<R> {
     fn format(
         &self,
         engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, failure::Error> {
+    ) -> Result<Box<builder::ActionBuilder>, error::StagingError> {
         self.format(engine).map(|a| {
             let a: Box<builder::ActionBuilder> = Box::new(a);
             a
@@ -122,7 +120,7 @@ impl ActionRender for Source {
     fn format(
         &self,
         engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, failure::Error> {
+    ) -> Result<Box<builder::ActionBuilder>, error::StagingError> {
         let value: Box<builder::ActionBuilder> = match *self {
             Source::SourceFile(ref b) => ActionRender::format(b, engine)?,
             Source::SourceFiles(ref b) => ActionRender::format(b, engine)?,
@@ -151,7 +149,7 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
-    fn format(&self, engine: &TemplateEngine) -> Result<builder::SourceFile, failure::Error> {
+    fn format(&self, engine: &TemplateEngine) -> Result<builder::SourceFile, error::StagingError> {
         let path = path::PathBuf::from(self.path.format(engine)?);
         let symlink = self.symlink
             .as_ref()
@@ -172,7 +170,7 @@ impl ActionRender for SourceFile {
     fn format(
         &self,
         engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, failure::Error> {
+    ) -> Result<Box<builder::ActionBuilder>, error::StagingError> {
         self.format(engine).map(|a| {
             let a: Box<builder::ActionBuilder> = Box::new(a);
             a
@@ -205,7 +203,7 @@ pub struct SourceFiles {
 }
 
 impl SourceFiles {
-    fn format(&self, engine: &TemplateEngine) -> Result<builder::SourceFiles, failure::Error> {
+    fn format(&self, engine: &TemplateEngine) -> Result<builder::SourceFiles, error::StagingError> {
         let path = path::PathBuf::from(self.path.format(engine)?);
         let pattern = self.pattern.format(engine)?;
         let value = builder::SourceFiles::new(path)
@@ -220,7 +218,7 @@ impl ActionRender for SourceFiles {
     fn format(
         &self,
         engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, failure::Error> {
+    ) -> Result<Box<builder::ActionBuilder>, error::StagingError> {
         self.format(engine).map(|a| {
             let a: Box<builder::ActionBuilder> = Box::new(a);
             a
@@ -243,7 +241,7 @@ pub struct Symlink {
 }
 
 impl Symlink {
-    fn format(&self, engine: &TemplateEngine) -> Result<builder::Symlink, failure::Error> {
+    fn format(&self, engine: &TemplateEngine) -> Result<builder::Symlink, error::StagingError> {
         let target = path::PathBuf::from(self.target.format(engine)?);
         let value = builder::Symlink::new(target).rename(self.rename
             .as_ref()
@@ -257,7 +255,7 @@ impl ActionRender for Symlink {
     fn format(
         &self,
         engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, failure::Error> {
+    ) -> Result<Box<builder::ActionBuilder>, error::StagingError> {
         self.format(engine).map(|a| {
             let a: Box<builder::ActionBuilder> = Box::new(a);
             a
@@ -265,9 +263,10 @@ impl ActionRender for Symlink {
     }
 }
 
-fn abs_to_rel(abs: &str) -> Result<path::PathBuf, failure::Error> {
+fn abs_to_rel(abs: &str) -> Result<path::PathBuf, error::StagingError> {
     if !abs.starts_with('/') {
-        bail!("Path is not absolute (within the state): {}", abs);
+        return error::StagingError::new(error::ErrorKind::InvalidConfiguration)
+            .set_context(format!("Path is not absolute (within the state): {}", abs));
     }
 
     let rel = abs.trim_left_matches('/');
@@ -275,7 +274,8 @@ fn abs_to_rel(abs: &str) -> Result<path::PathBuf, failure::Error> {
     for part in rel.split('/').filter(|s| !s.is_empty() && *s != ".") {
         if part == ".." {
             if !path.pop() {
-                bail!("Path is outside of staging root: {:?}", abs);
+                return error::StagingError::new(error::ErrorKind::InvalidConfiguration)
+                    .set_context(format!("Path is outside of staging root: {:?}", abs));
             }
         } else {
             path.push(part);
