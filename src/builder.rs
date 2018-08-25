@@ -31,11 +31,11 @@ pub trait ActionBuilder: fmt::Debug {
     /// Create concrete filesystem actions.
     ///
     /// - `target_dir`: The location everything will be written to (ie the stage).
-    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::Action>>, error::Errors>;
+    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::FsAction>>, error::Errors>;
 }
 
 impl<A: ActionBuilder + ?Sized> ActionBuilder for Box<A> {
-    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::Action>>, error::Errors> {
+    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::FsAction>>, error::Errors> {
         let target: &A = &self;
         target.build(target_dir)
     }
@@ -54,7 +54,7 @@ impl Stage {
 }
 
 impl ActionBuilder for Stage {
-    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::Action>>, error::Errors> {
+    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::FsAction>>, error::Errors> {
         let mut actions = vec![];
         let mut errors = error::Errors::new();
         for (target, sources) in &self.0 {
@@ -129,7 +129,7 @@ impl SourceFile {
 }
 
 impl ActionBuilder for SourceFile {
-    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::Action>>, error::Errors> {
+    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::FsAction>>, error::Errors> {
         let path = self.path.as_path();
         if !path.is_absolute() {
             Err(error::ErrorKind::HarvestingFailed
@@ -151,7 +151,7 @@ impl ActionBuilder for SourceFile {
                 )))?;
         }
         let copy_target = target_dir.join(filename);
-        let copy: Box<action::Action> = Box::new(action::CopyFile::new(&copy_target, path));
+        let copy: Box<action::FsAction> = Box::new(action::CopyFile::new(&copy_target, path));
 
         let mut actions = vec![copy];
         actions.extend(self.symlink.iter().map(|s| {
@@ -161,7 +161,7 @@ impl ActionBuilder for SourceFile {
             //    bail!("SourceFile symlink must not change directories: {:?}", s);
             //}
             let sym_target = target_dir.join(s);
-            let a: Box<action::Action> = Box::new(action::Symlink::new(sym_target, &copy_target));
+            let a: Box<action::FsAction> = Box::new(action::Symlink::new(sym_target, &copy_target));
             a
         }));
         // TODO(epage): Set symlink permissions
@@ -225,7 +225,7 @@ impl SourceFiles {
 }
 
 impl ActionBuilder for SourceFiles {
-    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::Action>>, error::Errors> {
+    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::FsAction>>, error::Errors> {
         let source_root = self.path.as_path();
         if !source_root.is_absolute() {
             Err(error::ErrorKind::HarvestingFailed
@@ -274,7 +274,7 @@ fn copy_entry(
     entry: Result<walkdir::DirEntry, globwalk::WalkError>,
     source_root: &path::Path,
     target_dir: &path::Path,
-) -> Result<Option<Box<action::Action>>, error::StagingError> {
+) -> Result<Option<Box<action::FsAction>>, error::StagingError> {
     let entry = entry.map_err(|e| error::ErrorKind::HarvestingFailed.error().set_cause(e))?;
     let source_file = entry.path();
     if source_file.is_dir() {
@@ -284,7 +284,7 @@ fn copy_entry(
         .strip_prefix(source_root)
         .map_err(|e| error::ErrorKind::HarvestingFailed.error().set_cause(e))?;
     let copy_target = target_dir.join(rel_source);
-    let copy: Box<action::Action> = Box::new(action::CopyFile::new(&copy_target, source_file));
+    let copy: Box<action::FsAction> = Box::new(action::CopyFile::new(&copy_target, source_file));
     Ok(Some(copy))
 }
 
@@ -318,7 +318,7 @@ impl Symlink {
 }
 
 impl ActionBuilder for Symlink {
-    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::Action>>, error::Errors> {
+    fn build(&self, target_dir: &path::Path) -> Result<Vec<Box<action::FsAction>>, error::Errors> {
         let target = self.target.as_path();
 
         let filename = self.rename
@@ -335,7 +335,7 @@ impl ActionBuilder for Symlink {
                 )))?
         }
         let staged = target_dir.join(filename);
-        let link: Box<action::Action> = Box::new(action::Symlink::new(&staged, target));
+        let link: Box<action::FsAction> = Box::new(action::Symlink::new(&staged, target));
 
         let actions = vec![link];
 
