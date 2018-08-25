@@ -31,6 +31,11 @@ impl CreateDirectory {
             staged: staged.into(),
         }
     }
+
+    /// The directory that will be created.
+    pub fn dir(&self) -> &path::Path {
+        &self.staged
+    }
 }
 
 impl fmt::Display for CreateDirectory {
@@ -69,6 +74,16 @@ impl CopyFile {
             staged: staged.into(),
             source: source.into(),
         }
+    }
+
+    /// The file to be copied.
+    pub fn source(&self) -> &path::Path {
+        &self.source
+    }
+
+    /// The file's destination path
+    pub fn destination(&self) -> &path::Path {
+        &self.staged
     }
 }
 
@@ -112,6 +127,16 @@ impl Symlink {
             staged: staged.into(),
             target: target.into(),
         }
+    }
+
+    /// The path where the link will exist.
+    pub fn link(&self) -> &path::Path {
+        &self.staged
+    }
+
+    /// The location the link points to.
+    pub fn target(&self) -> &path::Path {
+        &self.target
     }
 }
 
