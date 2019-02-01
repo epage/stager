@@ -14,7 +14,7 @@
 //! ```rust
 //! use std::path;
 //! use stager::de;
-//! use stager::de::ActionRender;
+//! use stager::de::RenderSpecification;
 //!
 //! // #[derive(Serialize, Deserialize)]
 //! #[derive(Default)]
@@ -30,16 +30,16 @@
 use std::collections::BTreeMap;
 use std::path;
 
-use builder;
+use super::Staging;
 use error;
+use spec;
 
 pub use template::*;
 
 /// Translate user-facing configuration to the staging APIs.
-pub trait ActionRender {
-    /// Format the serialized data into an `ActionBuilder`.
-    fn format(&self, engine: &TemplateEngine)
-        -> Result<Box<builder::ActionBuilder>, error::Errors>;
+pub trait RenderSpecification {
+    /// Format the serialized data into a `SpecificationBuilder`.
+    fn format(&self, engine: &TemplateEngine) -> Result<Box<spec::SpecificationBuilder>, error::Errors>;
 }
 
 /// For each stage target, a list of sources to populate it with.
@@ -53,44 +53,15 @@ pub type MapStage = CustomMapStage<Source>;
 /// The target is an absolute path, treating the stage as the root.  The target supports template
 /// formatting.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct CustomMapStage<R: ActionRender>(BTreeMap<Template, Vec<R>>);
+pub struct CustomMapStage<R: RenderSpecification>(BTreeMap<Template, Vec<R>>);
 
-impl<R: ActionRender> CustomMapStage<R> {
-    fn format(&self, engine: &TemplateEngine) -> Result<builder::Stage, error::Errors> {
-        let mut errors = error::Errors::new();
-        let mut stage: BTreeMap<path::PathBuf, Vec<Box<builder::ActionBuilder>>> = BTreeMap::new();
-        for (target, sources) in &self.0 {
-            let target = abs_to_rel(&target.format(engine)?)?;
-
-            let mut actions = Vec::with_capacity(sources.len());
-            for source in sources {
-                let action = source.format(engine);
-                match action {
-                    Ok(action) => actions.push(action),
-                    Err(error) => errors.extend(error),
-                }
-            }
-            stage.insert(target, actions);
-        }
-
-        let stage = builder::Stage::new(stage);
-        errors.ok(stage)
+impl<R: RenderSpecification> CustomMapStage<R> {
+    pub fn format(&self, engine: &TemplateEngine) -> Result<(), error::Errors> {
+        Ok(())
     }
 }
 
-impl<R: ActionRender> ActionRender for CustomMapStage<R> {
-    fn format(
-        &self,
-        engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, error::Errors> {
-        self.format(engine).map(|a| {
-            let a: Box<builder::ActionBuilder> = Box::new(a);
-            a
-        })
-    }
-}
-
-impl<R: ActionRender> Default for CustomMapStage<R> {
+impl<R: RenderSpecification> Default for CustomMapStage<R> {
     fn default() -> Self {
         Self {
             0: Default::default(),
@@ -112,18 +83,97 @@ pub enum Source {
     __Nonexhaustive,
 }
 
-impl ActionRender for Source {
-    fn format(
-        &self,
-        engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, error::Errors> {
-        let value: Box<builder::ActionBuilder> = match *self {
-            Source::SourceFile(ref b) => ActionRender::format(b, engine)?,
-            Source::SourceFiles(ref b) => ActionRender::format(b, engine)?,
-            Source::Symlink(ref b) => ActionRender::format(b, engine)?,
+impl Source {
+    /// Format the serialized data into a `SpecificationBuilder`.
+    pub fn format(&self, engine: &TemplateEngine) -> Result<SpecificationBuilder, error::Errors> {
+        let value = match *self {
+            Source::SourceFile(ref b) => SpecificationBuilderInner::SourceFile(b.format(engine)?),
+            Source::SourceFiles(ref b) => SpecificationBuilderInner::SourceFiles(b.format(engine)?),
+            Source::Symlink(ref b) => SpecificationBuilderInner::Symlink(b.format(engine)?),
+            Source::__Nonexhaustive => unreachable!("This is a non-public case"),
+        };
+        Ok(SpecificationBuilder(value))
+    }
+}
+
+impl RenderSpecification for Source {
+    fn format(&self, engine: &TemplateEngine) -> Result<Box<spec::SpecificationBuilder>, error::Errors> {
+        let value = match *self {
+            Source::SourceFile(ref b) => RenderSpecification::format(b, engine)?,
+            Source::SourceFiles(ref b) => RenderSpecification::format(b, engine)?,
+            Source::Symlink(ref b) => RenderSpecification::format(b, engine)?,
             Source::__Nonexhaustive => unreachable!("This is a non-public case"),
         };
         Ok(value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Create concrete filesystem specs.
+pub struct SpecificationBuilder(SpecificationBuilderInner);
+
+impl SpecificationBuilder {
+    /// Resolve a specification for a given `target_dir`.
+    pub fn resolve(self, target_dir: &path::Path) -> Result<Specification, error::Errors> {
+        self.0.resolve(target_dir)
+    }
+}
+
+impl spec::SpecificationBuilder for SpecificationBuilder {
+    fn resolve(&self, target_dir: &path::Path) -> Result<Box<spec::Specification>, error::Errors> {
+        self.clone().0.resolve(target_dir).map(|s| {
+            let s: Box<spec::Specification> = Box::new(s);
+            s
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SpecificationBuilderInner {
+    SourceFile(spec::SourceFileBuilder),
+    SourceFiles(spec::SourceFilesBuilder),
+    Symlink(spec::SymlinkBuilder),
+    __Nonexhaustive,
+}
+
+impl SpecificationBuilderInner {
+    fn resolve(self, target_dir: &path::Path) -> Result<Specification, error::Errors> {
+        let value = match self {
+            SpecificationBuilderInner::SourceFile(b) => SpecificationInner::SourceFile(b.resolve(target_dir)?),
+            SpecificationBuilderInner::SourceFiles(b) => SpecificationInner::SourceFiles(b.resolve(target_dir)?),
+            SpecificationBuilderInner::Symlink(b) => SpecificationInner::Symlink(b.resolve(target_dir)?),
+            SpecificationBuilderInner::__Nonexhaustive => unreachable!("This is a non-public case"),
+        };
+        Ok(Specification(value))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Concrete filesystem specs.
+pub struct Specification(SpecificationInner);
+
+impl spec::Specification for Specification {
+    fn stage(&self, stage: &mut Staging) -> Result<(), error::Errors> {
+        self.0.stage(stage)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum SpecificationInner {
+    SourceFile(spec::SourceFile),
+    SourceFiles(spec::SourceFiles),
+    Symlink(spec::Symlink),
+    __Nonexhaustive,
+}
+
+impl spec::Specification for SpecificationInner {
+    fn stage(&self, stage: &mut Staging) -> Result<(), error::Errors> {
+        match self {
+            SpecificationInner::SourceFile(b) => b.stage(stage),
+            SpecificationInner::SourceFiles(b) => b.stage(stage),
+            SpecificationInner::Symlink(b) => b.stage(stage),
+            SpecificationInner::__Nonexhaustive => unreachable!("This is a non-public case"),
+        }
     }
 }
 
@@ -145,7 +195,7 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
-    fn format(&self, engine: &TemplateEngine) -> Result<builder::SourceFile, error::Errors> {
+    fn format(&self, engine: &TemplateEngine) -> Result<spec::SourceFileBuilder, error::Errors> {
         let path = path::PathBuf::from(self.path.format(engine)?);
         let symlink = self.symlink
             .as_ref()
@@ -156,20 +206,17 @@ impl SourceFile {
             .as_ref()
             .map(|t| t.format(engine))
             .map_or(Ok(None), |r| r.map(Some))?;
-        let value = builder::SourceFile::new(path)
+        let value = spec::SourceFileBuilder::new(path)
             .rename(rename)
             .push_symlinks(symlink.into_iter());
         Ok(value)
     }
 }
 
-impl ActionRender for SourceFile {
-    fn format(
-        &self,
-        engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, error::Errors> {
+impl RenderSpecification for SourceFile {
+    fn format(&self, engine: &TemplateEngine) -> Result<Box<spec::SpecificationBuilder>, error::Errors> {
         self.format(engine).map(|a| {
-            let a: Box<builder::ActionBuilder> = Box::new(a);
+            let a: Box<spec::SpecificationBuilder> = Box::new(a);
             a
         })
     }
@@ -200,10 +247,10 @@ pub struct SourceFiles {
 }
 
 impl SourceFiles {
-    fn format(&self, engine: &TemplateEngine) -> Result<builder::SourceFiles, error::Errors> {
+    fn format(&self, engine: &TemplateEngine) -> Result<spec::SourceFilesBuilder, error::Errors> {
         let path = path::PathBuf::from(self.path.format(engine)?);
         let pattern = self.pattern.format(engine)?;
-        let value = builder::SourceFiles::new(path)
+        let value = spec::SourceFilesBuilder::new(path)
             .push_patterns(pattern.into_iter())
             .follow_links(self.follow_links)
             .allow_empty(self.allow_empty);
@@ -211,13 +258,10 @@ impl SourceFiles {
     }
 }
 
-impl ActionRender for SourceFiles {
-    fn format(
-        &self,
-        engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, error::Errors> {
+impl RenderSpecification for SourceFiles {
+    fn format(&self, engine: &TemplateEngine) -> Result<Box<spec::SpecificationBuilder>, error::Errors> {
         self.format(engine).map(|a| {
-            let a: Box<builder::ActionBuilder> = Box::new(a);
+            let a: Box<spec::SpecificationBuilder> = Box::new(a);
             a
         })
     }
@@ -238,9 +282,9 @@ pub struct Symlink {
 }
 
 impl Symlink {
-    fn format(&self, engine: &TemplateEngine) -> Result<builder::Symlink, error::Errors> {
+    fn format(&self, engine: &TemplateEngine) -> Result<spec::SymlinkBuilder, error::Errors> {
         let target = path::PathBuf::from(self.target.format(engine)?);
-        let value = builder::Symlink::new(target).rename(self.rename
+        let value = spec::SymlinkBuilder::new(target).rename(self.rename
             .as_ref()
             .map(|t| t.format(engine))
             .map_or(Ok(None), |r| r.map(Some))?);
@@ -248,13 +292,10 @@ impl Symlink {
     }
 }
 
-impl ActionRender for Symlink {
-    fn format(
-        &self,
-        engine: &TemplateEngine,
-    ) -> Result<Box<builder::ActionBuilder>, error::Errors> {
+impl RenderSpecification for Symlink {
+    fn format(&self, engine: &TemplateEngine) -> Result<Box<spec::SpecificationBuilder>, error::Errors> {
         self.format(engine).map(|a| {
-            let a: Box<builder::ActionBuilder> = Box::new(a);
+            let a: Box<spec::SpecificationBuilder> = Box::new(a);
             a
         })
     }
@@ -264,7 +305,7 @@ fn abs_to_rel(abs: &str) -> Result<path::PathBuf, error::StagingError> {
     if !abs.starts_with('/') {
         return Err(error::ErrorKind::InvalidConfiguration
             .error()
-            .set_context(format!("Path is not absolute (within the state): {}", abs)));
+            .set_context(format!("Path is not absolute (within the stage): {}", abs)));
     }
 
     let rel = abs.trim_left_matches('/');

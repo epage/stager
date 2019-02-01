@@ -7,54 +7,6 @@ use std::vec;
 
 type ErrorCause = Error + Send + Sync + 'static;
 
-pub(crate) struct ErrorPartition<'e, I> {
-    iter: I,
-    errors: &'e mut Errors,
-}
-
-impl<'e, I, T> ErrorPartition<'e, I>
-where
-    I: Iterator<Item = Result<T, StagingError>>,
-{
-    pub fn new(iter: I, errors: &'e mut Errors) -> Self {
-        Self { iter, errors }
-    }
-}
-
-impl<'e, I, T> Iterator for ErrorPartition<'e, I>
-where
-    I: Iterator<Item = Result<T, StagingError>>,
-{
-    type Item = T;
-
-    fn next(&mut self) -> Option<T> {
-        for item in &mut self.iter {
-            match item {
-                Ok(item) => return Some(item),
-                Err(item) => self.errors.push(item),
-            }
-        }
-
-        None
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-}
-
-impl<'e, I> fmt::Debug for ErrorPartition<'e, I>
-where
-    I: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("ErrorPartition")
-            .field("iter", &self.iter)
-            .field("errors", &self.errors)
-            .finish()
-    }
-}
-
 /// Aggregation of errors from a staging operation.
 #[derive(Debug)]
 pub struct Errors {
@@ -62,29 +14,9 @@ pub struct Errors {
 }
 
 impl Errors {
-    pub(crate) fn new() -> Self {
-        Self { errors: Vec::new() }
-    }
-
     pub(crate) fn with_error(error: StagingError) -> Self {
         let errors = vec![error];
         Self { errors }
-    }
-
-    pub(crate) fn push(&mut self, error: StagingError) {
-        self.errors.push(error);
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.errors.is_empty()
-    }
-
-    pub(crate) fn ok<T>(self, value: T) -> Result<T, Errors> {
-        if self.is_empty() {
-            Ok(value)
-        } else {
-            Err(self)
-        }
     }
 }
 

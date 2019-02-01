@@ -10,7 +10,7 @@
 //! ## Example
 //!
 //! [staging][staging] will
-//! - Read a stage configuration (using `staging::de`) and variables to be substitued using [liquid][liquid].
+//! - Read a stage configuration (using `staging::de`) and variables to be substituted using [liquid][liquid].
 //! - Transform the configuration and variables into the stager API (`staging::builder`).
 //! - Transform the builders into distinct actions to be performed on the file system (`staging::action`).
 //! - Apply these actions to the target directory.
@@ -36,11 +36,15 @@ extern crate log;
 extern crate serde;
 extern crate walkdir;
 
-pub mod action;
-pub mod builder;
 #[cfg(feature = "de")]
 pub mod de;
 #[cfg(feature = "de")]
 mod template;
 
+mod staging;
+mod spec;
+
+pub use staging::*;
+pub use spec::*;
 pub mod error;
+pub mod fs;
