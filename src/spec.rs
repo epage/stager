@@ -83,7 +83,7 @@ impl SourceFileBuilder {
             let default_name = source.file_name().ok_or_else(|| {
                 error::ErrorKind::HarvestingFailed
                     .error()
-                    .set_context(format!("SourceFile is missing a filename: {:?}", source))
+                    .set_context(format!("SourceFile is missing a filename: {}", source.display()))
             })?;
             let dest = rename
                 .as_ref()
@@ -94,8 +94,8 @@ impl SourceFileBuilder {
                 Err(error::ErrorKind::HarvestingFailed
                     .error()
                     .set_context(format!(
-                        "SourceFile rename must not change directories: {:?}",
-                        dest
+                        "SourceFile rename must not change directories: {}",
+                        dest.display()
                     )))?;
             }
             target_dir.join(dest)
@@ -109,8 +109,8 @@ impl SourceFileBuilder {
                     Err(error::ErrorKind::HarvestingFailed
                         .error()
                         .set_context(format!(
-                            "SourceFile symlink must not change directories: {:?}",
-                            dest
+                            "SourceFile symlink must not change directories: {}",
+                            dest.display()
                         )))?;
                 }
                 let symlink = target_dir.join(symlink);
@@ -267,15 +267,15 @@ impl Specification for SourceFiles {
         if empty {
             if self.allow_empty {
                 info!(
-                    "No files found under {:?} with patterns {:?}",
-                    self.path, self.pattern
+                    "No files found under {} with patterns {:?}",
+                    self.path.display(), self.pattern
                 );
             } else {
                 Err(error::ErrorKind::HarvestingFailed
                     .error()
                     .set_context(format!(
-                        "SourceFiles found no files under {:?} with patterns {:?}",
-                        self.path, self.pattern
+                        "SourceFiles found no files under {} with patterns {:?}",
+                        self.path.display(), self.pattern
                     )))?
             }
         }
@@ -334,8 +334,8 @@ impl SymlinkBuilder {
                 Err(error::ErrorKind::HarvestingFailed
                     .error()
                     .set_context(format!(
-                        "Symlink rename must not change directories: {:?}",
-                        filename,
+                        "Symlink rename must not change directories: `{}`",
+                        filename.to_string_lossy(),
                     )))?
             }
             target_dir.join(path)

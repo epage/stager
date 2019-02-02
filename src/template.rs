@@ -1,4 +1,5 @@
 use std::fmt;
+use std::iter;
 
 use liquid;
 
@@ -107,5 +108,21 @@ where
                 u
             }
         }
+    }
+}
+
+impl<T> From<T> for OneOrMany<T> {
+    fn from(one: T) -> OneOrMany<T> {
+        OneOrMany::One(one)
+    }
+}
+
+impl<T> iter::FromIterator<T> for OneOrMany<T> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
+        let many = iter.into_iter().collect();
+        OneOrMany::Many(many)
     }
 }

@@ -80,7 +80,7 @@ pub enum Source {
     /// Specifies a symbolic link file to be staged into the target directory.
     Symlink(Symlink),
     #[doc(hidden)]
-    __Nonexhaustive,
+    __NoneEhaustive,
 }
 
 impl Source {
@@ -90,7 +90,7 @@ impl Source {
             Source::SourceFile(ref b) => SpecificationBuilderInner::SourceFile(b.format(engine)?),
             Source::SourceFiles(ref b) => SpecificationBuilderInner::SourceFiles(b.format(engine)?),
             Source::Symlink(ref b) => SpecificationBuilderInner::Symlink(b.format(engine)?),
-            Source::__Nonexhaustive => unreachable!("This is a non-public case"),
+            Source::__NoneEhaustive => unreachable!("This is a non-public case"),
         };
         Ok(SpecificationBuilder(value))
     }
@@ -102,7 +102,7 @@ impl RenderSpecification for Source {
             Source::SourceFile(ref b) => RenderSpecification::format(b, engine)?,
             Source::SourceFiles(ref b) => RenderSpecification::format(b, engine)?,
             Source::Symlink(ref b) => RenderSpecification::format(b, engine)?,
-            Source::__Nonexhaustive => unreachable!("This is a non-public case"),
+            Source::__NoneEhaustive => unreachable!("This is a non-public case"),
         };
         Ok(value)
     }
@@ -133,7 +133,7 @@ enum SpecificationBuilderInner {
     SourceFile(spec::SourceFileBuilder),
     SourceFiles(spec::SourceFilesBuilder),
     Symlink(spec::SymlinkBuilder),
-    __Nonexhaustive,
+    __NoneEhaustive,
 }
 
 impl SpecificationBuilderInner {
@@ -142,7 +142,7 @@ impl SpecificationBuilderInner {
             SpecificationBuilderInner::SourceFile(b) => SpecificationInner::SourceFile(b.resolve(target_dir)?),
             SpecificationBuilderInner::SourceFiles(b) => SpecificationInner::SourceFiles(b.resolve(target_dir)?),
             SpecificationBuilderInner::Symlink(b) => SpecificationInner::Symlink(b.resolve(target_dir)?),
-            SpecificationBuilderInner::__Nonexhaustive => unreachable!("This is a non-public case"),
+            SpecificationBuilderInner::__NoneEhaustive => unreachable!("This is a non-public case"),
         };
         Ok(Specification(value))
     }
@@ -163,7 +163,7 @@ enum SpecificationInner {
     SourceFile(spec::SourceFile),
     SourceFiles(spec::SourceFiles),
     Symlink(spec::Symlink),
-    __Nonexhaustive,
+    __NoneEhaustive,
 }
 
 impl spec::Specification for SpecificationInner {
@@ -172,7 +172,7 @@ impl spec::Specification for SpecificationInner {
             SpecificationInner::SourceFile(b) => b.stage(stage),
             SpecificationInner::SourceFiles(b) => b.stage(stage),
             SpecificationInner::Symlink(b) => b.stage(stage),
-            SpecificationInner::__Nonexhaustive => unreachable!("This is a non-public case"),
+            SpecificationInner::__NoneEhaustive => unreachable!("This is a non-public case"),
         }
     }
 }
@@ -195,6 +195,16 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
+    /// Configure staging for a `SourceFile`.
+    pub fn new(path: Template) -> Self {
+        Self {
+            path,
+            rename: None,
+            symlink: None,
+            non_exhaustive: (),
+        }
+    }
+
     fn format(&self, engine: &TemplateEngine) -> Result<spec::SourceFileBuilder, error::Errors> {
         let path = path::PathBuf::from(self.path.format(engine)?);
         let symlink = self.symlink
@@ -226,8 +236,8 @@ impl RenderSpecification for SourceFile {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceFiles {
-    ///  Specifies the root path that `patterns` will be run on to identify files to be copied into
-    ///  the target directory.
+    /// Specifies the root path that `patterns` will be run on to identify files to be copied into
+    /// the target directory.
     pub path: Template,
     /// Specifies the pattern for executing the recursive/multifile match.
     pub pattern: OneOrMany<Template>,
@@ -247,6 +257,17 @@ pub struct SourceFiles {
 }
 
 impl SourceFiles {
+    /// Configure staging for `SourceFiles`.
+    pub fn new(path: Template, pattern: Template) -> Self {
+        Self {
+            path,
+            pattern: OneOrMany::One(pattern),
+            follow_links: false,
+            allow_empty: false,
+            non_exhaustive: (),
+        }
+    }
+
     fn format(&self, engine: &TemplateEngine) -> Result<spec::SourceFilesBuilder, error::Errors> {
         let path = path::PathBuf::from(self.path.format(engine)?);
         let pattern = self.pattern.format(engine)?;
@@ -282,6 +303,15 @@ pub struct Symlink {
 }
 
 impl Symlink {
+    /// Configure staging for a `Symlink`.
+    pub fn new(target: Template) -> Self {
+        Self {
+            target,
+            rename: None,
+            non_exhaustive: (),
+        }
+    }
+
     fn format(&self, engine: &TemplateEngine) -> Result<spec::SymlinkBuilder, error::Errors> {
         let target = path::PathBuf::from(self.target.format(engine)?);
         let value = spec::SymlinkBuilder::new(target).rename(self.rename
@@ -305,7 +335,7 @@ fn abs_to_rel(abs: &str) -> Result<path::PathBuf, error::StagingError> {
     if !abs.starts_with('/') {
         return Err(error::ErrorKind::InvalidConfiguration
             .error()
-            .set_context(format!("Path is not absolute (within the stage): {}", abs)));
+            .set_context(format!("Path is not absolute (within the stage): `{}`", abs)));
     }
 
     let rel = abs.trim_left_matches('/');
@@ -315,7 +345,7 @@ fn abs_to_rel(abs: &str) -> Result<path::PathBuf, error::StagingError> {
             if !path.pop() {
                 return Err(error::ErrorKind::InvalidConfiguration
                     .error()
-                    .set_context(format!("Path is outside of staging root: {:?}", abs)));
+                    .set_context(format!("Path is outside of staging root: `{}`", abs)));
             }
         } else {
             path.push(part);
